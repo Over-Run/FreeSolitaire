@@ -5,23 +5,124 @@
 #include <iostream>
 #include <d3d11.h>
 #include <dxgi1_3.h>
+#include <DirectXMath.h>
+#include <d3dcompiler.h>
 #include <wrl.h>
+
+#define SAFE_RELEASE(p) { if ((p)) { (p)->Release(); (p) = nullptr; } }
+#define HR(x, s) { HRESULT hr = (x); if (FAILED(hr)) { MessageBox(nullptr, s, L"Error", MB_OK); } }
+
+using Microsoft::WRL::ComPtr;
+using DirectX::XMFLOAT3;
+using DirectX::XMFLOAT4;
+using DirectX::XMFLOAT4X4;
 
 GLFWwindow* window;
 HWND hWnd;
-Microsoft::WRL::ComPtr<ID3D11Device> m_pd3dDevice;
-Microsoft::WRL::ComPtr<ID3D11DeviceContext> m_pd3dDeviceContext;
-Microsoft::WRL::ComPtr<IDXGISwapChain> m_pDXGISwapChain;
-Microsoft::WRL::ComPtr<ID3D11Texture2D> m_pBackBuffer;
-Microsoft::WRL::ComPtr<ID3D11RenderTargetView> m_pRenderTarget;
+ComPtr<ID3D11Device> m_pd3dDevice;
+ComPtr<ID3D11DeviceContext> m_pd3dDeviceContext;
+ComPtr<IDXGISwapChain> m_pDXGISwapChain;
+ComPtr<ID3D11Texture2D> m_pBackBuffer;
+ComPtr<ID3D11RenderTargetView> m_pRenderTarget;
 D3D11_TEXTURE2D_DESC m_bbDesc;
-Microsoft::WRL::ComPtr<ID3D11Texture2D> m_pDepthStencil;
-Microsoft::WRL::ComPtr<ID3D11DepthStencilView> m_pDepthStencilView;
+ComPtr<ID3D11Texture2D> m_pDepthStencil;
+ComPtr<ID3D11DepthStencilView> m_pDepthStencilView;
 D3D11_VIEWPORT m_viewport;
+ComPtr<ID3D11VertexShader> m_pVertexShader;
+ComPtr<ID3D11PixelShader> m_pPixelShader;
+ComPtr<ID3D11InputLayout> m_pVertexLayout;
 float clearColor[4] = { 0.0f, 0.0f, 0.0f, 1.0f };
+
+typedef struct _mvpConstantBuffer {
+    XMFLOAT4X4 world;
+    XMFLOAT4X4 view;
+    XMFLOAT4X4 projection;
+} MvpConstantBuffer;
+
+typedef struct _vertexPosColor {
+    XMFLOAT3 pos;
+    XMFLOAT4 color;
+    static const D3D11_INPUT_ELEMENT_DESC inputLayout[2];
+} VertexPosColor;
+
+const D3D11_INPUT_ELEMENT_DESC VertexPosColor::inputLayout[2] = {
+    { "POSITION", 0, DXGI_FORMAT_R32G32B32_FLOAT, 0, 0, D3D11_INPUT_PER_VERTEX_DATA, 0 },
+    { "COLOR", 0, DXGI_FORMAT_R32G32B32A32_FLOAT, 0, 12, D3D11_INPUT_PER_VERTEX_DATA, 0 }
+};
 
 void onError(int code, const char* description) {
     std::cerr << "GLFW Error code " << code << ": " << description << std::endl;
+}
+
+HRESULT createShaderFromFile(
+    const wchar_t* csoFilename,
+    const wchar_t* hlslFilename,
+    LPCSTR entrypoint,
+    LPCSTR shaderModel,
+    ID3DBlob** ppBlobOut
+) {
+    HRESULT hr = S_OK;
+
+    if (csoFilename != nullptr && D3DReadFileToBlob(csoFilename, ppBlobOut) == S_OK)
+        return hr;
+    DWORD dwShaderFlags = D3DCOMPILE_ENABLE_STRICTNESS;
+#ifdef _DEBUG
+    dwShaderFlags |= D3DCOMPILE_DEBUG | D3DCOMPILE_SKIP_OPTIMIZATION;
+#endif // _DEBUG
+    ID3DBlob* errorBlob = nullptr;
+    hr = D3DCompileFromFile(hlslFilename, nullptr, D3D_COMPILE_STANDARD_FILE_INCLUDE, entrypoint, shaderModel,
+        dwShaderFlags, 0, ppBlobOut, &errorBlob);
+    if (FAILED(hr)) {
+        if (errorBlob != nullptr) {
+            OutputDebugStringA(reinterpret_cast<const char*>(errorBlob->GetBufferPointer()));
+        }
+        SAFE_RELEASE(errorBlob);
+        return hr;
+    }
+    if (csoFilename != nullptr) {
+        return D3DWriteBlobToFile(*ppBlobOut, csoFilename, FALSE);
+    }
+    return hr;
+}
+
+bool initEffect() {
+    ComPtr<ID3DBlob> blob;
+    HR(createShaderFromFile(L"res/shaders/VertexShader.cso", L"res/shaders/VertexShader.hlsl", "main", "vs_5_0", blob.ReleaseAndGetAddressOf()), L"Failed to load vertex shader!");
+    HR(m_pd3dDevice->CreateVertexShader(blob->GetBufferPointer(), blob->GetBufferSize(), nullptr, m_pVertexShader.GetAddressOf()), L"Failed to create vertex shader!");
+    HR(m_pd3dDevice->CreateInputLayout(VertexPosColor::inputLayout, ARRAYSIZE(VertexPosColor::inputLayout),
+        blob->GetBufferPointer(), blob->GetBufferSize(), m_pVertexLayout.GetAddressOf()), L"Failed to create input layout!");
+    HR(createShaderFromFile(L"res/shaders/PixelShader.cso", L"res/shaders/PixelShader.hlsl", "main", "ps_5_0", blob.ReleaseAndGetAddressOf()), L"Failed to load pixel shader!");
+    HR(m_pd3dDevice->CreatePixelShader(blob->GetBufferPointer(), blob->GetBufferSize(), nullptr, m_pPixelShader.GetAddressOf()), L"Failed to create pixel shader!");
+    return true;
+}
+
+void initResource() {
+    VertexPosColor vertices[] = {
+        { XMFLOAT3(0.0f, 0.5f, 0.5f), XMFLOAT4(1.0f, 0.0f, 0.0f, 1.0f) },
+        { XMFLOAT3(0.5f, -0.5f, 0.5f), XMFLOAT4(0.0f, 0.0f, 1.0f, 1.0f) },
+        { XMFLOAT3(-0.5f, -0.5f, 0.5f), XMFLOAT4(0.0f, 1.0f, 0.0f, 1.0f) }
+    };
+    D3D11_BUFFER_DESC vbd;
+    ZeroMemory(&vbd, sizeof(vbd));
+    vbd.Usage = D3D11_USAGE_IMMUTABLE;
+    vbd.ByteWidth = sizeof(vertices);
+    vbd.BindFlags = D3D11_BIND_VERTEX_BUFFER;
+    vbd.CPUAccessFlags = 0;
+
+    D3D11_SUBRESOURCE_DATA InitData;
+    ZeroMemory(&InitData, sizeof(InitData));
+    InitData.pSysMem = vertices;
+
+    ComPtr<ID3D11Buffer> m_pVertexBuffer;
+    HR(m_pd3dDevice->CreateBuffer(&vbd, &InitData, m_pVertexBuffer.GetAddressOf()), L"Failed to create vertex buffer!");
+
+    UINT stride = sizeof(VertexPosColor);
+    UINT offset = 0;
+    m_pd3dDeviceContext->IASetVertexBuffers(0, 1, m_pVertexBuffer.GetAddressOf(), &stride, &offset);
+    m_pd3dDeviceContext->IASetPrimitiveTopology(D3D11_PRIMITIVE_TOPOLOGY_TRIANGLELIST);
+    m_pd3dDeviceContext->IASetInputLayout(m_pVertexLayout.Get());
+    m_pd3dDeviceContext->VSSetShader(m_pVertexShader.Get(), nullptr, 0);
+    m_pd3dDeviceContext->PSSetShader(m_pPixelShader.Get(), nullptr, 0);
 }
 
 void initDX() {
@@ -40,8 +141,8 @@ void initDX() {
 #endif
 
     // Create the Direct3D 11 API device object and a corresponding context.
-    Microsoft::WRL::ComPtr<ID3D11Device>        device;
-    Microsoft::WRL::ComPtr<ID3D11DeviceContext> context;
+    ComPtr<ID3D11Device>        device;
+    ComPtr<ID3D11DeviceContext> context;
 
     D3D_FEATURE_LEVEL m_featureLevel;
     HRESULT hr = D3D11CreateDevice(
@@ -80,12 +181,12 @@ void initDX() {
     desc.OutputWindow = hWnd;
 
     // Create the DXGI device object to use in other factories, such as Direct2D.
-    Microsoft::WRL::ComPtr<IDXGIDevice3> dxgiDevice;
+    ComPtr<IDXGIDevice3> dxgiDevice;
     m_pd3dDevice.As(&dxgiDevice);
 
     // Create swap chain.
-    Microsoft::WRL::ComPtr<IDXGIAdapter> adapter;
-    Microsoft::WRL::ComPtr<IDXGIFactory> factory;
+    ComPtr<IDXGIAdapter> adapter;
+    ComPtr<IDXGIFactory> factory;
 
     hr = dxgiDevice->GetAdapter(&adapter);
 
@@ -145,11 +246,22 @@ void initDX() {
         1,
         &m_viewport
     );
+
+    initEffect();
+    initResource();
 }
 
 void render() {
+    m_pd3dDeviceContext->OMSetRenderTargets(1, m_pRenderTarget.GetAddressOf(), m_pDepthStencilView.Get());
     m_pd3dDeviceContext->ClearRenderTargetView(m_pRenderTarget.Get(), clearColor);
+    m_pd3dDeviceContext->ClearDepthStencilView(m_pDepthStencilView.Get(), D3D11_CLEAR_DEPTH | D3D11_CLEAR_STENCIL, 1.0f, 0);
+    m_pd3dDeviceContext->Draw(3, 0);
     m_pDXGISwapChain->Present(0, 0);
+}
+
+void cleanup() {
+    if (m_pd3dDeviceContext)
+        m_pd3dDeviceContext->ClearState();
 }
 
 int WINAPI WinMain(
@@ -184,6 +296,7 @@ int WINAPI WinMain(
         render();
         glfwPollEvents();
     }
+    glfwDestroyWindow(window);
     glfwTerminate();
     return 0;
 }
