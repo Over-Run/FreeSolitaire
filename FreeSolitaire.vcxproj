@@ -97,7 +97,7 @@
       <GenerateDebugInformation>true</GenerateDebugInformation>
       <EntryPointSymbol>
       </EntryPointSymbol>
-      <AdditionalDependencies>glfw3.lib;d3d11.lib;dxgi.lib;dxguid.lib;D3DCompiler.lib;winmm.lib;%(AdditionalDependencies)</AdditionalDependencies>
+      <AdditionalDependencies>glfw3.lib;d3d11.lib;d2d1.lib;dwrite.lib;dxgi.lib;dxguid.lib;d3dcompiler.lib;winmm.lib;%(AdditionalDependencies)</AdditionalDependencies>
       <AdditionalLibraryDirectories>$(ProjectDir)lib\x86;%(AdditionalLibraryDirectories)</AdditionalLibraryDirectories>
       <IgnoreSpecificDefaultLibraries>MSVCRT;%(IgnoreSpecificDefaultLibraries)</IgnoreSpecificDefaultLibraries>
     </Link>
@@ -121,7 +121,7 @@
       <GenerateDebugInformation>true</GenerateDebugInformation>
       <EntryPointSymbol>
       </EntryPointSymbol>
-      <AdditionalDependencies>glfw3.lib;d3d11.lib;dxgi.lib;dxguid.lib;D3DCompiler.lib;winmm.lib;%(AdditionalDependencies)</AdditionalDependencies>
+      <AdditionalDependencies>glfw3.lib;d3d11.lib;d2d1.lib;dwrite.lib;dxgi.lib;dxguid.lib;d3dcompiler.lib;winmm.lib;%(AdditionalDependencies)</AdditionalDependencies>
       <AdditionalLibraryDirectories>$(ProjectDir)lib\x86;%(AdditionalLibraryDirectories)</AdditionalLibraryDirectories>
     </Link>
   </ItemDefinitionGroup>
@@ -140,7 +140,7 @@
       <GenerateDebugInformation>true</GenerateDebugInformation>
       <EntryPointSymbol>
       </EntryPointSymbol>
-      <AdditionalDependencies>glfw3.lib;d3d11.lib;dxgi.lib;dxguid.lib;D3DCompiler.lib;winmm.lib;%(AdditionalDependencies)</AdditionalDependencies>
+      <AdditionalDependencies>glfw3.lib;d3d11.lib;d2d1.lib;dwrite.lib;dxgi.lib;dxguid.lib;d3dcompiler.lib;winmm.lib;%(AdditionalDependencies)</AdditionalDependencies>
       <AdditionalLibraryDirectories>$(ProjectDir)lib\x64;%(AdditionalLibraryDirectories)</AdditionalLibraryDirectories>
       <IgnoreSpecificDefaultLibraries>MSVCRT;%(IgnoreSpecificDefaultLibraries)</IgnoreSpecificDefaultLibraries>
     </Link>
@@ -164,12 +164,13 @@
       <GenerateDebugInformation>true</GenerateDebugInformation>
       <EntryPointSymbol>
       </EntryPointSymbol>
-      <AdditionalDependencies>glfw3.lib;d3d11.lib;dxgi.lib;dxguid.lib;D3DCompiler.lib;winmm.lib;%(AdditionalDependencies)</AdditionalDependencies>
+      <AdditionalDependencies>glfw3.lib;d3d11.lib;d2d1.lib;dwrite.lib;dxgi.lib;dxguid.lib;d3dcompiler.lib;winmm.lib;%(AdditionalDependencies)</AdditionalDependencies>
       <AdditionalLibraryDirectories>$(ProjectDir)lib\x64;%(AdditionalLibraryDirectories)</AdditionalLibraryDirectories>
     </Link>
   </ItemDefinitionGroup>
   <ItemGroup>
     <ClCompile Include="src\main.cpp" />
+    <ClCompile Include="src\vertex.cpp" />
   </ItemGroup>
   <ItemGroup>
     <FxCompile Include="res\shaders\PixelShader.hlsl">
@@ -195,6 +196,10 @@
   </ItemGroup>
   <ItemGroup>
     <None Include="res\shaders\Header.hlsli" />
+  </ItemGroup>
+  <ItemGroup>
+    <ClInclude Include="include\freesolitaire\mesh.h" />
+    <ClInclude Include="include\freesolitaire\vertex.h" />
   </ItemGroup>
   <Import Project="$(VCTargetsPath)\Microsoft.Cpp.targets" />
   <ImportGroup Label="ExtensionTargets">

@@ -2,4 +2,4 @@
 
 FreeSolitaire is a game to free to play solitaires.
 
-Used C++ and DirectX 11.
+Used C++ and DirectX 11.1.

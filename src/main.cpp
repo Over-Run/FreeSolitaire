@@ -4,21 +4,38 @@
 #include "GLFW/glfw3native.h"
 #include <iostream>
 #include <d3d11.h>
+#include <d2d1.h>
+#include <dwrite.h>
 #include <dxgi1_3.h>
 #include <DirectXMath.h>
 #include <d3dcompiler.h>
 #include <wrl.h>
+#include "freesolitaire/mesh.h"
 
 #define SAFE_RELEASE(p) { if ((p)) { (p)->Release(); (p) = nullptr; } }
-#define HR(x, s) { HRESULT hr = (x); if (FAILED(hr)) { MessageBox(nullptr, s, L"Error", MB_OK); } }
+#define HR(x, s, ...) { HRESULT hr = (x); if (FAILED(hr)) { MessageBox(nullptr, s, L"Error", MB_OK); __VA_ARGS__; } }
+
+constexpr int WINDOW_WIDTH = 800;
+constexpr int WINDOW_HEIGHT = 640;
 
 using Microsoft::WRL::ComPtr;
 using DirectX::XMFLOAT3;
 using DirectX::XMFLOAT4;
-using DirectX::XMFLOAT4X4;
+using DirectX::XMMATRIX;
+using DirectX::XMMatrixIdentity;
+using DirectX::XMMatrixOrthographicOffCenterRH;
+using DirectX::XMMatrixScaling;
+using DirectX::XMMatrixTranspose;
+using DirectX::XMMatrixTranslation;
+using std::cerr;
+using std::cout;
+using std::endl;
+using FreeSolitaire::MeshData;
+using FreeSolitaire::CreatePlane;
 
 GLFWwindow* window;
 HWND hWnd;
+
 ComPtr<ID3D11Device> m_pd3dDevice;
 ComPtr<ID3D11DeviceContext> m_pd3dDeviceContext;
 ComPtr<IDXGISwapChain> m_pDXGISwapChain;
@@ -31,27 +48,44 @@ D3D11_VIEWPORT m_viewport;
 ComPtr<ID3D11VertexShader> m_pVertexShader;
 ComPtr<ID3D11PixelShader> m_pPixelShader;
 ComPtr<ID3D11InputLayout> m_pVertexLayout;
+ComPtr<ID3D11Buffer> m_pMvpConstantBuffer;
+
+ComPtr<ID2D1Factory> m_pd2dFactory;
+ComPtr<IDXGISurface> surface;
+ComPtr<ID2D1RenderTarget> m_pd2dRenderTarget;
+ComPtr<IDWriteFactory> m_pdwriteFactory;
+ComPtr<IDWriteTextFormat> m_pTextFormat;
+ComPtr<ID2D1SolidColorBrush> m_pColorBrush;
+
+ComPtr<ID3D11Buffer> m_pVertexBuffer;
+ComPtr<ID3D11Buffer> m_pIndexBuffer;
+
+UINT m_IndexCount;
 float clearColor[4] = { 0.0f, 0.0f, 0.0f, 1.0f };
 
+int cursorX, cursorY;
+
 typedef struct _mvpConstantBuffer {
-    XMFLOAT4X4 world;
-    XMFLOAT4X4 view;
-    XMFLOAT4X4 projection;
+    XMMATRIX world;
+    XMMATRIX view;
+    XMMATRIX projection;
 } MvpConstantBuffer;
-
-typedef struct _vertexPosColor {
-    XMFLOAT3 pos;
-    XMFLOAT4 color;
-    static const D3D11_INPUT_ELEMENT_DESC inputLayout[2];
-} VertexPosColor;
-
-const D3D11_INPUT_ELEMENT_DESC VertexPosColor::inputLayout[2] = {
-    { "POSITION", 0, DXGI_FORMAT_R32G32B32_FLOAT, 0, 0, D3D11_INPUT_PER_VERTEX_DATA, 0 },
-    { "COLOR", 0, DXGI_FORMAT_R32G32B32A32_FLOAT, 0, 12, D3D11_INPUT_PER_VERTEX_DATA, 0 }
-};
+MvpConstantBuffer mvpConstBuf;
 
 void onError(int code, const char* description) {
-    std::cerr << "GLFW Error code " << code << ": " << description << std::endl;
+    cerr << "GLFW Error code " << code << ": " << description << endl;
+}
+
+void onMouseBtn(GLFWwindow* window, int btn, int action, int mods) {
+    if (action == GLFW_PRESS) {
+        if (btn == GLFW_MOUSE_BUTTON_LEFT) {
+        }
+    }
+}
+
+void onCursorPos(GLFWwindow* window, double xpos, double ypos) {
+    cursorX = (int)std::floor(xpos);
+    cursorY = (int)std::floor(ypos);
 }
 
 HRESULT createShaderFromFile(
@@ -87,45 +121,75 @@ HRESULT createShaderFromFile(
 
 bool initEffect() {
     ComPtr<ID3DBlob> blob;
-    HR(createShaderFromFile(L"res/shaders/VertexShader.cso", L"res/shaders/VertexShader.hlsl", "main", "vs_5_0", blob.ReleaseAndGetAddressOf()), L"Failed to load vertex shader!");
-    HR(m_pd3dDevice->CreateVertexShader(blob->GetBufferPointer(), blob->GetBufferSize(), nullptr, m_pVertexShader.GetAddressOf()), L"Failed to create vertex shader!");
+    HR(createShaderFromFile(L"res/shaders/VertexShader.cso", L"res/shaders/VertexShader.hlsl", "main", "vs_5_0", blob.ReleaseAndGetAddressOf()), L"Failed to load vertex shader!", return false);
+    HR(m_pd3dDevice->CreateVertexShader(blob->GetBufferPointer(), blob->GetBufferSize(), nullptr, m_pVertexShader.GetAddressOf()), L"Failed to create vertex shader!", return false);
     HR(m_pd3dDevice->CreateInputLayout(VertexPosColor::inputLayout, ARRAYSIZE(VertexPosColor::inputLayout),
-        blob->GetBufferPointer(), blob->GetBufferSize(), m_pVertexLayout.GetAddressOf()), L"Failed to create input layout!");
-    HR(createShaderFromFile(L"res/shaders/PixelShader.cso", L"res/shaders/PixelShader.hlsl", "main", "ps_5_0", blob.ReleaseAndGetAddressOf()), L"Failed to load pixel shader!");
-    HR(m_pd3dDevice->CreatePixelShader(blob->GetBufferPointer(), blob->GetBufferSize(), nullptr, m_pPixelShader.GetAddressOf()), L"Failed to create pixel shader!");
+        blob->GetBufferPointer(), blob->GetBufferSize(), m_pVertexLayout.GetAddressOf()), L"Failed to create input layout!", return false);
+    HR(createShaderFromFile(L"res/shaders/PixelShader.cso", L"res/shaders/PixelShader.hlsl", "main", "ps_5_0", blob.ReleaseAndGetAddressOf()), L"Failed to load pixel shader!", return false);
+    HR(m_pd3dDevice->CreatePixelShader(blob->GetBufferPointer(), blob->GetBufferSize(), nullptr, m_pPixelShader.GetAddressOf()), L"Failed to create pixel shader!", return false);
     return true;
 }
 
-void initResource() {
-    VertexPosColor vertices[] = {
-        { XMFLOAT3(0.0f, 0.5f, 0.5f), XMFLOAT4(1.0f, 0.0f, 0.0f, 1.0f) },
-        { XMFLOAT3(0.5f, -0.5f, 0.5f), XMFLOAT4(0.0f, 0.0f, 1.0f, 1.0f) },
-        { XMFLOAT3(-0.5f, -0.5f, 0.5f), XMFLOAT4(0.0f, 1.0f, 0.0f, 1.0f) }
-    };
+bool resetMesh(MeshData<VertexPosColor> meshData) {
+    m_pVertexBuffer.Reset();
+    m_pIndexBuffer.Reset();
+
     D3D11_BUFFER_DESC vbd;
     ZeroMemory(&vbd, sizeof(vbd));
     vbd.Usage = D3D11_USAGE_IMMUTABLE;
-    vbd.ByteWidth = sizeof(vertices);
+    vbd.ByteWidth = (UINT)meshData.vertexVec.size() * sizeof(VertexPosColor);
     vbd.BindFlags = D3D11_BIND_VERTEX_BUFFER;
     vbd.CPUAccessFlags = 0;
 
-    D3D11_SUBRESOURCE_DATA InitData;
-    ZeroMemory(&InitData, sizeof(InitData));
-    InitData.pSysMem = vertices;
-
-    ComPtr<ID3D11Buffer> m_pVertexBuffer;
-    HR(m_pd3dDevice->CreateBuffer(&vbd, &InitData, m_pVertexBuffer.GetAddressOf()), L"Failed to create vertex buffer!");
+    D3D11_SUBRESOURCE_DATA initData;
+    ZeroMemory(&initData, sizeof(initData));
+    initData.pSysMem = meshData.vertexVec.data();
+    HR(m_pd3dDevice->CreateBuffer(&vbd, &initData, m_pVertexBuffer.GetAddressOf()), L"Failed to create the vertex buffer!", return false);
 
     UINT stride = sizeof(VertexPosColor);
     UINT offset = 0;
+
     m_pd3dDeviceContext->IASetVertexBuffers(0, 1, m_pVertexBuffer.GetAddressOf(), &stride, &offset);
+
+    m_IndexCount = (UINT)meshData.indexVec.size();
+    D3D11_BUFFER_DESC ibd;
+    ZeroMemory(&ibd, sizeof(ibd));
+    ibd.Usage = D3D11_USAGE_IMMUTABLE;
+    ibd.ByteWidth = m_IndexCount * sizeof(DWORD);
+    ibd.BindFlags = D3D11_BIND_INDEX_BUFFER;
+    ibd.CPUAccessFlags = 0;
+
+    initData.pSysMem = meshData.indexVec.data();
+    HR(m_pd3dDevice->CreateBuffer(&ibd, &initData, m_pIndexBuffer.GetAddressOf()), L"Failed to create the index buffer!", return false);
+
+    m_pd3dDeviceContext->IASetIndexBuffer(m_pIndexBuffer.Get(), DXGI_FORMAT_R32_UINT, 0);
+
+    return true;
+}
+
+bool initResource() {
+    auto meshData = CreatePlane<VertexPosColor>(WINDOW_WIDTH, WINDOW_HEIGHT, 0, 0);
+    resetMesh(meshData);
+
+    D3D11_BUFFER_DESC cbd;
+    ZeroMemory(&cbd, sizeof(cbd));
+    cbd.Usage = D3D11_USAGE_DYNAMIC;
+    cbd.ByteWidth = sizeof(MvpConstantBuffer);
+    cbd.BindFlags = D3D11_BIND_CONSTANT_BUFFER;
+    cbd.CPUAccessFlags = D3D11_CPU_ACCESS_WRITE;
+
+    HR(m_pd3dDevice->CreateBuffer(&cbd, nullptr, m_pMvpConstantBuffer.GetAddressOf()), L"Failed to create MVP constant buffer!", return false);
+
     m_pd3dDeviceContext->IASetPrimitiveTopology(D3D11_PRIMITIVE_TOPOLOGY_TRIANGLELIST);
     m_pd3dDeviceContext->IASetInputLayout(m_pVertexLayout.Get());
     m_pd3dDeviceContext->VSSetShader(m_pVertexShader.Get(), nullptr, 0);
+    m_pd3dDeviceContext->VSSetConstantBuffers(0, 1, m_pMvpConstantBuffer.GetAddressOf());
     m_pd3dDeviceContext->PSSetShader(m_pPixelShader.Get(), nullptr, 0);
+
+    return true;
 }
 
-void initDX() {
+bool initDX() {
     hWnd = glfwGetWin32Window(window);
     D3D_FEATURE_LEVEL levels[] = {
         D3D_FEATURE_LEVEL_11_0,
@@ -162,7 +226,8 @@ void initDX() {
         // Handle device interface creation failure if it occurs.
         // For example, reduce the feature level requirement, or fail over 
         // to WARP rendering.
-        MessageBox(nullptr, L"Failed to create the D3D device", L"Error", MB_OK);
+        MessageBox(nullptr, L"Failed to create the D3D device!", L"Error", MB_OK);
+        return false;
     }
 
     // Store pointers to the Direct3D 11.1 API device and immediate context.
@@ -247,16 +312,58 @@ void initDX() {
         &m_viewport
     );
 
-    initEffect();
-    initResource();
+
+    HR(D2D1CreateFactory(D2D1_FACTORY_TYPE_SINGLE_THREADED, m_pd2dFactory.GetAddressOf()), L"Failed to create the D2D factory!", return false);
+
+    HR(m_pDXGISwapChain->GetBuffer(0, __uuidof(IDXGISurface), reinterpret_cast<void**>(surface.GetAddressOf())), L"Failed to create the DXGI surface!", return false);
+
+    D2D1_RENDER_TARGET_PROPERTIES props = D2D1::RenderTargetProperties(
+        D2D1_RENDER_TARGET_TYPE_DEFAULT,
+        D2D1::PixelFormat(DXGI_FORMAT_UNKNOWN, D2D1_ALPHA_MODE_PREMULTIPLIED));
+    HR(m_pd2dFactory->CreateDxgiSurfaceRenderTarget(surface.Get(), &props, m_pd2dRenderTarget.GetAddressOf()), L"Failed to create the DXGI surface render target!", return false);
+
+    HR(DWriteCreateFactory(DWRITE_FACTORY_TYPE_SHARED, __uuidof(IDWriteFactory),
+        reinterpret_cast<IUnknown**>(m_pdwriteFactory.GetAddressOf())), L"Failed to create the DWrite factory!", return false);
+
+    HR(m_pdwriteFactory->CreateTextFormat(L"Default", nullptr, DWRITE_FONT_WEIGHT_NORMAL,
+        DWRITE_FONT_STYLE_NORMAL, DWRITE_FONT_STRETCH_NORMAL, 14, L"en-US",
+        m_pTextFormat.GetAddressOf()), L"Failed to create the text format!", return false);
+
+    HR(m_pd2dRenderTarget->CreateSolidColorBrush(
+        D2D1::ColorF(D2D1::ColorF::White),
+        m_pColorBrush.GetAddressOf()), L"Failed to create the solid color brush!", return false);
+
+    return initEffect() && initResource();
 }
+
+void update() {
+    mvpConstBuf.world = XMMatrixIdentity();
+    mvpConstBuf.view = XMMatrixIdentity();
+    mvpConstBuf.projection = XMMatrixTranspose(XMMatrixOrthographicOffCenterRH(
+        0, WINDOW_WIDTH, WINDOW_HEIGHT, 0, -100, 100
+    ));
+    D3D11_MAPPED_SUBRESOURCE mappedData;
+    HR(m_pd3dDeviceContext->Map(m_pMvpConstantBuffer.Get(), 0, D3D11_MAP_WRITE_DISCARD, 0, &mappedData), L"Failed to map MVP constant buffer!");
+    memcpy_s(mappedData.pData, sizeof(mvpConstBuf), &mvpConstBuf, sizeof(mvpConstBuf));
+    m_pd3dDeviceContext->Unmap(m_pMvpConstantBuffer.Get(), 0);
+}
+
+extern void renderDx2d();
 
 void render() {
     m_pd3dDeviceContext->OMSetRenderTargets(1, m_pRenderTarget.GetAddressOf(), m_pDepthStencilView.Get());
     m_pd3dDeviceContext->ClearRenderTargetView(m_pRenderTarget.Get(), clearColor);
     m_pd3dDeviceContext->ClearDepthStencilView(m_pDepthStencilView.Get(), D3D11_CLEAR_DEPTH | D3D11_CLEAR_STENCIL, 1.0f, 0);
-    m_pd3dDeviceContext->Draw(3, 0);
+    m_pd3dDeviceContext->DrawIndexed(m_IndexCount, 0, 0);
+    renderDx2d();
     m_pDXGISwapChain->Present(0, 0);
+}
+
+void renderDx2d() {
+    m_pd2dRenderTarget->BeginDraw();
+    m_pd2dRenderTarget->DrawTextW(L"Score: ", 6, m_pTextFormat.Get(),
+        D2D1_RECT_F{ 0.0f, WINDOW_HEIGHT - 18, WINDOW_WIDTH, WINDOW_HEIGHT }, m_pColorBrush.Get());
+    HR(m_pd2dRenderTarget->EndDraw(), L"Error drawing Dx2d");
 }
 
 void cleanup() {
@@ -277,25 +384,31 @@ int WINAPI WinMain(
     }
     glfwDefaultWindowHints();
     glfwWindowHint(GLFW_VISIBLE, GLFW_FALSE);
-    glfwWindowHint(GLFW_RESIZABLE, GLFW_TRUE);
+    glfwWindowHint(GLFW_RESIZABLE, GLFW_FALSE);
     glfwWindowHint(GLFW_CLIENT_API, GLFW_NO_API);
-    window = glfwCreateWindow(800, 600, "FreeSolitaire", nullptr, nullptr);
+    window = glfwCreateWindow(WINDOW_WIDTH, WINDOW_HEIGHT, "FreeSolitaire", nullptr, nullptr);
     if (window == nullptr) {
         MessageBox(nullptr, L"Failed to create the GLFW window", L"Error", MB_OK);
         return 0;
     }
+
+    glfwSetMouseButtonCallback(window, onMouseBtn);
+    glfwSetCursorPosCallback(window, onCursorPos);
+
     const GLFWvidmode* vidmode = glfwGetVideoMode(glfwGetPrimaryMonitor());
     if (vidmode != nullptr) {
-        glfwSetWindowPos(window, (vidmode->width - 800) >> 1, (vidmode->height - 600) >> 1);
+        glfwSetWindowPos(window, (vidmode->width - WINDOW_WIDTH) >> 1, (vidmode->height - WINDOW_HEIGHT) >> 1);
     }
 
-    initDX();
-
-    glfwShowWindow(window);
-    while (!glfwWindowShouldClose(window)) {
-        render();
-        glfwPollEvents();
+    if (initDX()) {
+        glfwShowWindow(window);
+        while (!glfwWindowShouldClose(window)) {
+            update();
+            render();
+            glfwPollEvents();
+        }
     }
+
     glfwDestroyWindow(window);
     glfwTerminate();
     return 0;
