@@ -18,28 +18,23 @@
     <ClCompile Include="src\main.cpp">
       <Filter>Source Files</Filter>
     </ClCompile>
-    <ClCompile Include="src\vertex.cpp">
+    <ClCompile Include="src\tex_mgr.cpp">
       <Filter>Source Files</Filter>
     </ClCompile>
   </ItemGroup>
   <ItemGroup>
-    <FxCompile Include="res\shaders\VertexShader.hlsl">
+    <Image Include="res\background.png">
       <Filter>Resource Files</Filter>
-    </FxCompile>
-    <FxCompile Include="res\shaders\PixelShader.hlsl">
+    </Image>
+    <Image Include="res\pokers.png">
       <Filter>Resource Files</Filter>
-    </FxCompile>
+    </Image>
   </ItemGroup>
   <ItemGroup>
-    <None Include="res\shaders\Header.hlsli">
-      <Filter>Resource Files</Filter>
-    </None>
-  </ItemGroup>
-  <ItemGroup>
-    <ClInclude Include="include\freesolitaire\mesh.h">
+    <ClInclude Include="include\freesolitaire\tex_mgr.h">
       <Filter>Header Files</Filter>
     </ClInclude>
-    <ClInclude Include="include\freesolitaire\vertex.h">
+    <ClInclude Include="include\freesolitaire\stdafx.h">
       <Filter>Header Files</Filter>
     </ClInclude>
   </ItemGroup>
