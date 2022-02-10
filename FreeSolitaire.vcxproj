@@ -173,7 +173,10 @@
     </Link>
   </ItemDefinitionGroup>
   <ItemGroup>
+    <ClCompile Include="src\atlas.cpp" />
+    <ClCompile Include="src\card.cpp" />
     <ClCompile Include="src\main.cpp" />
+    <ClCompile Include="src\text_mgr.cpp" />
     <ClCompile Include="src\tex_mgr.cpp" />
   </ItemGroup>
   <ItemGroup>
@@ -181,7 +184,10 @@
     <Image Include="res\pokers.png" />
   </ItemGroup>
   <ItemGroup>
+    <ClInclude Include="include\freesolitaire\atlas.h" />
+    <ClInclude Include="include\freesolitaire\card.h" />
     <ClInclude Include="include\freesolitaire\stdafx.h" />
+    <ClInclude Include="include\freesolitaire\text_mgr.h" />
     <ClInclude Include="include\freesolitaire\tex_mgr.h" />
   </ItemGroup>
   <Import Project="$(VCTargetsPath)\Microsoft.Cpp.targets" />

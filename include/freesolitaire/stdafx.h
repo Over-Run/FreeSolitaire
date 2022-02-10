@@ -4,5 +4,10 @@
 #define GLFW_INCLUDE_GLU
 #include "GLFW/glfw3.h"
 #include <iostream>
+#include <map>
+#include <string>
+#include <stack>
+#include <array>
 #define STBI_WINDOWS_UTF8
 #include "stb/stb_image.h"
+#include "stb/stb_truetype.h"

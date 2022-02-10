@@ -21,6 +21,15 @@
     <ClCompile Include="src\tex_mgr.cpp">
       <Filter>Source Files</Filter>
     </ClCompile>
+    <ClCompile Include="src\text_mgr.cpp">
+      <Filter>Source Files</Filter>
+    </ClCompile>
+    <ClCompile Include="src\card.cpp">
+      <Filter>Source Files</Filter>
+    </ClCompile>
+    <ClCompile Include="src\atlas.cpp">
+      <Filter>Source Files</Filter>
+    </ClCompile>
   </ItemGroup>
   <ItemGroup>
     <Image Include="res\background.png">
@@ -35,6 +44,15 @@
       <Filter>Header Files</Filter>
     </ClInclude>
     <ClInclude Include="include\freesolitaire\stdafx.h">
+      <Filter>Header Files</Filter>
+    </ClInclude>
+    <ClInclude Include="include\freesolitaire\text_mgr.h">
+      <Filter>Header Files</Filter>
+    </ClInclude>
+    <ClInclude Include="include\freesolitaire\card.h">
+      <Filter>Header Files</Filter>
+    </ClInclude>
+    <ClInclude Include="include\freesolitaire\atlas.h">
       <Filter>Header Files</Filter>
     </ClInclude>
   </ItemGroup>
